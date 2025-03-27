@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# opt
+man=false
+del=false
+sel=false
+while getopts "mds" opt
+do
+  case $opt in
+    m)
+      man=true
+      ;;
+    d)
+      del=true
+      ;;
+    s)
+      sel=true
+      ;;
+  esac
+  shift "$((OPTIND - 1))"
+done
+
+# var
+BIN_PATH="$(whereis -b "$1" | cut -d ':' -f2 | cut -d ' ' -f2 | tr -d ' ')"
+MAN_PATH="$(whereis -m "$1" | cut -d ':' -f2 | cut -d ' ' -f2 | tr -d ' ')"
+
+if [ "$sel" == true ]
+then
+  IFS=':'
+
+  [ "$man" == false ] && 
+  mapfile <<< "${PATH}" &&
+  select i in ${MAPFILE[@]}
+  do
+    BIN_PATH="$i/$1"
+    break
+  done
+
+  [ "$man" == true ] && 
+  mapfile <<< "$(manpath)" &&
+  select i in ${MAPFILE[@]}
+  do
+    MAN_PATH="$i/$1"
+    break
+  done
+fi
+
+# root
+[[ $(type sudo 2> /dev/null) ]] && SUPER=sudo
+[[ $(type doas 2> /dev/null) ]] && SUPER=doas
+[ "$(type sudo 2> /dev/null)" \
+  -o \
+  "$(type doas 2> /dev/null)" \
+  ] || printf "bee: Could not resolve privilege escalation tool\n"
+
+# main
+[ -z "$1" ] &&
+printf "bee: No arguments were given\n" &&
+exit 1
+
+[ "$man" == false ] &&
+if [[ $(stat "$BIN_PATH" 2> /dev/null) ]]
+then
+  if file -L "$BIN_PATH" | grep -q "ELF"
+  then
+    printf "bee: \`$1\` is an ELF binary file\n"
+  else
+    while [ "$del" == true ]
+    do
+      read -p "Do you really wish to delete binary \"$BIN_PATH\": [y]es [N]o ? " yn
+      case $yn in
+        [Yy])
+          printf "$SUPER rm \"$BIN_PATH\"\n"
+          $SUPER rm "$BIN_PATH"
+          exit
+          ;;
+        [Nn]|*)
+          exit
+          ;;
+      esac
+    done
+    case `stat -L -c "%G" "$BIN_PATH"` in
+      root)
+        printf "$SUPER ${EDITOR:-vi} \"$BIN_PATH\"\n"
+        $SUPER ${EDITOR:-vi} "$BIN_PATH"
+        ;;
+      *)
+        printf "${EDITOR:-vi} \"$BIN_PATH\"\n"
+        ${EDITOR:-vi} "$BIN_PATH"
+        ;;
+    esac
+  fi
+else
+  read -p "bee: \"$BIN_PATH\" does not exist. Do you with to create it: [Y]es [n]o ? " yn
+  case $yn in
+    [Yy]|*)
+      printf "${EDITOR:-vi} \"$BIN_PATH\"\n"
+      ${EDITOR:-vi} "$BIN_PATH"
+      ;;
+    [Nn])
+      exit
+      ;;
+  esac
+fi
+
+[ "$man" == true ] &&
+if [[ $(stat "$MAN_PATH" 2> /dev/null) ]]
+then
+  while [ "$del" == true ]
+  do
+    read -p "Do you really wish to delete manual page \"$MAN_PATH\": [y]es [N]o ? " yn
+    case $yn in
+      [Yy])
+        printf "$SUPER rm \"$MAN_PATH\"\n"
+        $SUPER rm "$MAN_PATH"
+        exit
+        ;;
+      [Nn]|*)
+        exit
+        ;;
+    esac
+  done
+  case `stat -L -c "%G" "$MAN_PATH"` in
+    root)
+      printf "$SUPER ${EDITOR:-vi} \"$MAN_PATH\"\n"
+      $SUPER ${EDITOR:-vi} "$MAN_PATH"
+      ;;
+    *)
+      printf "${EDITOR:-vi} \"$MAN_PATH\"\n"
+      ${EDITOR:-vi} "$MAN_PATH"
+      ;;
+  esac
+else
+  read -p "bee: \"$MAN_PATH\" does not exist. Do you with to create it: [Y]es [n]o ? " yn
+  case $yn in
+    [Yy]|*)
+      printf "${EDITOR:-vi} \"$MAN_PATH\"\n"
+      ${EDITOR:-vi} "$MAN_PATH"
+      ;;
+    [Nn])
+      exit
+      ;;
+  esac
+fi
